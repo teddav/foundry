@@ -165,6 +165,9 @@ pub struct Cheatcodes {
     /// CREATE / CREATE2 frames. This is needed to make gas meter pausing work correctly when
     /// paused and creating new contracts.
     pub gas_metering_create: Option<Option<revm::Gas>>,
+
+    /// Current's call memory
+    pub memory: Vec<u8>,
 }
 
 impl Cheatcodes {
@@ -288,6 +291,8 @@ where
         data: &mut EVMData<'_, DB>,
         _: bool,
     ) -> Return {
+        self.memory = interpreter.memory.data().clone();
+
         // reset gas if gas metering is turned off
         match self.gas_metering {
             Some(None) => {

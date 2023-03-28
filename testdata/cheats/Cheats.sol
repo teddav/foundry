@@ -26,6 +26,11 @@ interface Cheats {
         uint256 created;
     }
 
+    struct FormattedMemory {
+        string header;
+        string[] words;
+    }
+
     // Set block.timestamp (newTimestamp)
     function warp(uint256) external;
 
@@ -483,4 +488,12 @@ interface Cheats {
 
     // Resumes gas metering from where it left off
     function resumeGasMetering() external;
+    
+    // Gets the current memory as bytes
+    function getMemory(uint256,uint256) external view returns (bytes memory);
+
+    // Gets the current memory and returns it ready to be console.logged
+    function getMemoryFormattedAsString(uint256,uint256) external view returns (string memory);
+
+    function getMemoryFormatted(uint256,uint256) external view returns (FormattedMemory memory);
 }

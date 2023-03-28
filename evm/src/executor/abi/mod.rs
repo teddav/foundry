@@ -18,6 +18,7 @@ ethers::contract::abigen!(
             struct Log {bytes32[] topics; bytes data;}
             struct Rpc {string name; string url;}
             struct FsMetadata {bool isDir; bool isSymlink; uint256 length; bool readOnly; uint256 modified; uint256 accessed; uint256 created;}
+            struct FormattedMemory {string header; string[] words;}
             roll(uint256)
             warp(uint256)
             difficulty(uint256)
@@ -188,6 +189,9 @@ ethers::contract::abigen!(
             writeJson(string, string, string)
             pauseGasMetering()
             resumeGasMetering()
+            getMemory(uint256,uint256)(bytes)
+            getMemoryFormattedAsString(uint256,uint256)(string)
+            getMemoryFormatted(uint256,uint256)(FormattedMemory)
     ]"#,
 );
 pub use hevm::{HEVMCalls, HEVM_ABI};
