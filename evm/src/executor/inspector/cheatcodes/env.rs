@@ -13,7 +13,8 @@ use crate::{
 use ethers::{
     abi::{self, AbiEncode, RawLog, Token, Tokenizable, Tokenize},
     signers::{LocalWallet, Signer},
-    types::{Address, Bytes, U256},
+    types::{Address, Bytes, TransactionRequest, U256},
+    utils::rlp::Rlp,
 };
 use foundry_config::Config;
 use revm::{
@@ -639,6 +640,18 @@ pub fn apply<DB: DatabaseExt>(
         }
         HEVMCalls::ResumeGasMetering(_) => {
             state.gas_metering = None;
+            Bytes::new()
+        }
+        HEVMCalls::SendRawTransaction(inner) => {
+            let decoded_tx = TransactionRequest::decode_signed_rlp(&Rlp::new(inner.0.as_ref()))
+                .map_err(|e| err!("sendRawTransaction: error decoding transaction {e}"))?;
+
+            data.db.transact_from_tx(
+                decoded_tx.0,
+                data.env,
+                &mut data.journaled_state,
+                Some(state),
+            )?;
             Bytes::new()
         }
         _ => return Ok(None),

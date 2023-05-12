@@ -11,7 +11,7 @@ use crate::{
 };
 use ethers::{
     prelude::{Block, H160, H256, U256},
-    types::{Address, BlockNumber, Transaction, U64},
+    types::{Address, BlockNumber, Bytes, Transaction, TransactionRequest, U64},
     utils::keccak256,
 };
 use hashbrown::HashMap as Map;
@@ -178,10 +178,19 @@ pub trait DatabaseExt: Database<Error = DatabaseError> {
     ) -> eyre::Result<()>;
 
     /// Fetches the given transaction for the fork and executes it, committing the state in the DB
-    fn transact(
+    fn transact_from_hash(
         &mut self,
         id: Option<LocalForkId>,
         transaction: H256,
+        env: &mut Env,
+        journaled_state: &mut JournaledState,
+        cheatcodes_inspector: Option<&mut Cheatcodes>,
+    ) -> eyre::Result<()>;
+
+    /// executes a given TransactionRequest, updates the JournaledState with the changes
+    fn transact_from_tx(
+        &mut self,
+        transaction: TransactionRequest,
         env: &mut Env,
         journaled_state: &mut JournaledState,
         cheatcodes_inspector: Option<&mut Cheatcodes>,
@@ -1126,7 +1135,7 @@ impl DatabaseExt for Backend {
         Ok(())
     }
 
-    fn transact(
+    fn transact_from_hash(
         &mut self,
         maybe_id: Option<LocalForkId>,
         transaction: H256,
@@ -1150,6 +1159,81 @@ impl DatabaseExt for Backend {
         let tx = fork.db.db.get_transaction(transaction)?;
 
         commit_transaction(tx, env, journaled_state, fork, &fork_id, cheatcodes_inspector)?;
+
+        Ok(())
+    }
+
+    fn transact_from_tx(
+        &mut self,
+        transaction: TransactionRequest,
+        env: &mut Env,
+        journaled_state: &mut JournaledState,
+        cheatcodes_inspector: Option<&mut Cheatcodes>,
+    ) -> eyre::Result<()> {
+        env.tx.caller = h160_to_b160(
+            transaction
+                .from
+                .ok_or_else(|| eyre::eyre!("transact_from_tx: No `from` field found"))?,
+        );
+        env.tx.gas_limit = transaction
+            .gas
+            .ok_or_else(|| eyre::eyre!("transact_from_tx: No `gas` field found"))?
+            .as_u64();
+        env.tx.gas_price = transaction.gas_price.unwrap_or_default().into();
+        env.tx.nonce = Some(
+            transaction
+                .nonce
+                .ok_or_else(|| eyre::eyre!("transact_from_tx: No `nonce` field found"))?
+                .as_u64(),
+        );
+        env.tx.value = transaction
+            .value
+            .ok_or_else(|| eyre::eyre!("transact_from_tx: No `value` field found"))?
+            .into();
+        env.tx.data = transaction.data.unwrap_or_else(|| Bytes::default()).0;
+        env.tx.transact_to = transaction
+            .to
+            .ok_or_else(|| eyre::eyre!("transact_from_tx: No `to` field found"))?
+            .as_address()
+            .copied()
+            .map(h160_to_b160)
+            .map(TransactTo::Call)
+            .unwrap_or_else(TransactTo::create);
+
+        let mut cloned_db = self.clone();
+        cloned_db.commit(journaled_state.state.clone());
+
+        let state = {
+            let mut evm = EVM::new();
+            evm.env = env.to_owned();
+
+            evm.database(cloned_db.clone());
+
+            if let Some(inspector) = cheatcodes_inspector {
+                match evm.inspect(inspector) {
+                    Ok(res) => res.state,
+                    Err(e) => eyre::bail!("backend: failed committing transaction: {:?}", e),
+                }
+            } else {
+                match evm.transact() {
+                    Ok(res) => res.state,
+                    Err(e) => eyre::bail!("backend: failed committing transaction: {:?}", e),
+                }
+            }
+        };
+
+        let changed_accounts = state.keys().copied().collect::<Vec<_>>();
+
+        // commit the state to the cloned db
+        cloned_db.commit(state);
+
+        // and update our JournaledState with the changes
+        for addr in changed_accounts {
+            // if the account already existed, we remove it from the journaled state
+            journaled_state.state.remove(&addr);
+            // then we (re)load the updated account
+            journaled_state.load_account(addr, &mut cloned_db)?;
+        }
 
         Ok(())
     }
