@@ -11,7 +11,7 @@ use crate::{
 };
 use ethers::{
     prelude::{Block, H160, H256, U256},
-    types::{Address, BlockNumber, Bytes, Transaction, TransactionRequest, U64},
+    types::{Address, BlockNumber, Bytes, NameOrAddress, Transaction, TransactionRequest, U64},
     utils::keccak256,
 };
 use hashbrown::HashMap as Map;
@@ -27,11 +27,14 @@ use revm::{
 };
 use std::{
     collections::{HashMap, HashSet},
+    str::FromStr,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
 };
+
+use tracing::{trace, warn};
 
 mod fuzz;
 pub mod snapshot;
@@ -731,6 +734,8 @@ impl Backend {
     where
         INSP: Inspector<Self>,
     {
+        println!("inspect_ref");
+
         self.initialize(env);
 
         match revm::evm_inner::<Self, true>(env, self, &mut inspector).transact() {
@@ -1170,6 +1175,8 @@ impl DatabaseExt for Backend {
         journaled_state: &mut JournaledState,
         cheatcodes_inspector: Option<&mut Cheatcodes>,
     ) -> eyre::Result<()> {
+        println!("transact_from_tx");
+
         env.tx.caller = h160_to_b160(
             transaction
                 .from
@@ -1193,12 +1200,16 @@ impl DatabaseExt for Backend {
         env.tx.data = transaction.data.unwrap_or_else(|| Bytes::default()).0;
         env.tx.transact_to = transaction
             .to
-            .ok_or_else(|| eyre::eyre!("transact_from_tx: No `to` field found"))?
+            .unwrap_or(NameOrAddress::Address(H160::zero()))
+            // .ok_or_else(|| eyre::eyre!("transact_from_tx: No `to` field found"))?
             .as_address()
             .copied()
             .map(h160_to_b160)
             .map(TransactTo::Call)
             .unwrap_or_else(TransactTo::create);
+        env.tx.chain_id = transaction.chain_id.map(|c| c.as_u64());
+
+        println!("ENV {:#?}", env.tx);
 
         let mut cloned_db = self.clone();
         cloned_db.commit(journaled_state.state.clone());
@@ -1212,7 +1223,7 @@ impl DatabaseExt for Backend {
             if let Some(inspector) = cheatcodes_inspector {
                 match evm.inspect(inspector) {
                     Ok(res) => res.state,
-                    Err(e) => eyre::bail!("backend: failed committing transaction: {:?}", e),
+                    Err(e) => eyre::bail!("backend: failed inspecting transaction: {:?}", e),
                 }
             } else {
                 match evm.transact() {
@@ -1222,18 +1233,62 @@ impl DatabaseExt for Backend {
             }
         };
 
+        println!("state: {state:#?}");
+
         let changed_accounts = state.keys().copied().collect::<Vec<_>>();
 
         // commit the state to the cloned db
-        cloned_db.commit(state);
+        // cloned_db.commit(state.clone());
+        self.commit(state.clone());
+
+        println!("FIRST COMMIT");
+        // println!(
+        //     "cloned_db {:#?}",
+        //     cloned_db
+        //         .mem_db()
+        //         .accounts
+        //         .get(&h160_to_b160("0x5bF11839F61EF5ccEEaf1F4153e44df5D02825f7".parse().
+        // unwrap())) );
+
+        // // if there is an active fork, we commit the changes to the fork
+        // if let Some(fork) = self.active_fork_mut() {
+        //     println!("fork");
+        //     fork.db.commit(state);
+        // }
 
         // and update our JournaledState with the changes
         for addr in changed_accounts {
+            println!("CHANGED ACCOUNT {:?}", addr);
+
             // if the account already existed, we remove it from the journaled state
-            journaled_state.state.remove(&addr);
-            // then we (re)load the updated account
-            journaled_state.load_account(addr, &mut cloned_db)?;
+            // if journaled_state.state.remove(&addr).is_some() {
+            //     // then we (re)load the updated account
+            //     // journaled_state.load_account(addr, &mut cloned_db)?;
+            //     journaled_state.load_account(addr, self)?;
+            // }
+
+            // // same if there is an active fork
+            // if let Some(fork) = self.active_fork_mut() {
+            //     fork.journaled_state.state.remove(&addr);
+            //     fork.journaled_state.load_account(addr, &mut fork.db)?;
+            // }
         }
+
+        println!("STATE APPLIED");
+
+        // println!(
+        //     "DB1: {:#?} {:#?}",
+        //     self.mem_db.basic("0x5bF11839F61EF5ccEEaf1F4153e44df5D02825f7".parse().unwrap(),),
+        //     self.mem_db.storage(
+        //         "0x5bF11839F61EF5ccEEaf1F4153e44df5D02825f7".parse().unwrap(),
+        //         U256::from("0x1dc4c07a2d98af447533671abc03c6192381098ad56ff9efb78b0b78b085c8be")
+        //             .into()
+        //     )
+        // );
+        // println!(
+        //     "DB2: {:#?}",
+        //     self.mem_db.basic("0x7ED31830602f9F7419307235c0610Fb262AA0375".parse().unwrap(),),
+        // );
 
         Ok(())
     }
@@ -1849,7 +1904,7 @@ fn commit_transaction(
         if let Some(inspector) = cheatcodes_inspector {
             match evm.inspect(inspector) {
                 Ok(res) => res.state,
-                Err(e) => eyre::bail!("backend: failed committing transaction: {:?}", e),
+                Err(e) => eyre::bail!("backend: failed inspecting transaction: {:?}", e),
             }
         } else {
             match evm.transact() {

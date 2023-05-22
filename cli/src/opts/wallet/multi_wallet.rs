@@ -223,6 +223,8 @@ impl MultiWallet {
                 (!script_wallets.is_empty()).then(|| script_wallets.to_vec())
             ],
             for wallet in wallets.into_iter() {
+                println!("WALLET ! {wallet:?}");
+
                 let address = wallet.address();
                 if addresses.contains(&address) {
                     addresses.remove(&address);
@@ -239,6 +241,10 @@ impl MultiWallet {
                 }
             }
         );
+
+        if local_wallets.len() == 0 && unused_wallets.len() == 0 {
+            return Ok(local_wallets)
+        }
 
         let mut error_msg = String::new();
 

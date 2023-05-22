@@ -13,6 +13,7 @@ use crate::{
 use ethers::{
     prelude::{Provider, Signer, TxHash},
     providers::{JsonRpcClient, Middleware},
+    types::Signature,
     utils::format_units,
 };
 use eyre::{bail, ContextCompat, Result, WrapErr};
@@ -32,13 +33,25 @@ impl ScriptArgs {
         let provider = Arc::new(try_get_http_provider(fork_url)?);
         let already_broadcasted = deployment_sequence.receipts.len();
 
+        println!("\n\nsend_transactions");
+        println!("deployment_sequence {:#?}", deployment_sequence.transactions);
+
         if already_broadcasted < deployment_sequence.transactions.len() {
-            let required_addresses = deployment_sequence
-                .typed_transactions()
-                .into_iter()
-                .skip(already_broadcasted)
-                .map(|(_, tx)| *tx.from().expect("No sender for onchain transaction!"))
-                .collect();
+            let base_transactions =
+                deployment_sequence.base_transactions().into_iter().skip(already_broadcasted);
+
+            let required_addresses = base_transactions
+                .clone()
+                .filter(|t| matches!(t, TransactionForm::Raw(_)))
+                .map(|t| {
+                    *t.to_typed_transaction().from().expect("No sender for onchain transaction!")
+                })
+                .collect::<HashSet<Address>>();
+
+            println!("required_addresses: {required_addresses:?}");
+
+            let n_signed_transactions =
+                base_transactions.filter(|t| matches!(t, TransactionForm::Signed(_, _))).count();
 
             let (send_kind, chain) = if self.unlocked {
                 let chain = provider.get_chainid().await?;
@@ -54,7 +67,15 @@ impl ScriptArgs {
                         .filter_map(|(_, tx)| tx.from().copied()),
                 );
                 (SendTransactionsKind::Unlocked(senders), chain.as_u64())
+            } else if required_addresses.len() == 0 && n_signed_transactions > 0 {
+                (SendTransactionsKind::Raw(HashMap::new()), 0)
             } else {
+                println!(
+                    "send_transactions SendTransactionsKind {:?} {:?}",
+                    self.wallets, required_addresses
+                );
+                println!("{script_wallets:?}");
+
                 let local_wallets = self
                     .wallets
                     .find_all(provider.clone(), required_addresses, script_wallets)
@@ -71,17 +92,26 @@ impl ScriptArgs {
 
             // Make a one-time gas price estimation
             let (gas_price, eip1559_fees) = {
-                match deployment_sequence.transactions.front().unwrap().typed_tx() {
-                    TypedTransaction::Legacy(_) | TypedTransaction::Eip2930(_) => {
-                        (provider.get_gas_price().await.ok(), None)
-                    }
-                    TypedTransaction::Eip1559(_) => {
-                        let fees = estimate_eip1559_fees(&provider, Some(chain))
-                            .await
-                            .wrap_err("Failed to estimate EIP1559 fees. This chain might not support EIP1559, try adding --legacy to your command.")?;
+                let raw_tx = deployment_sequence
+                    .base_transactions()
+                    .into_iter()
+                    .find(|t| matches!(t, TransactionForm::Raw(_)));
 
-                        (None, Some(fees))
+                if let Some(tx) = raw_tx {
+                    match tx.to_typed_transaction() {
+                        TypedTransaction::Legacy(_) | TypedTransaction::Eip2930(_) => {
+                            (provider.get_gas_price().await.ok(), None)
+                        }
+                        TypedTransaction::Eip1559(_) => {
+                            let fees = estimate_eip1559_fees(&provider, Some(chain))
+            .await
+            .wrap_err("Failed to estimate EIP1559 fees. This chain might not support EIP1559, try adding --legacy to your command.")?;
+
+                            (None, Some(fees))
+                        }
                     }
+                } else {
+                    (None, None)
                 }
             };
 
@@ -92,6 +122,10 @@ impl ScriptArgs {
                 .iter()
                 .skip(already_broadcasted)
                 .map(|tx_with_metadata| {
+                    if let TransactionForm::Signed(tx, sig) = &tx_with_metadata.transaction {
+                        return Ok((tx.clone(), SendTransactionKind::Signed(*sig), true))
+                    }
+
                     let tx = tx_with_metadata.typed_tx();
                     let from = *tx.from().expect("No sender for onchain transaction!");
 
@@ -254,6 +288,11 @@ impl ScriptArgs {
                 Ok(pending.tx_hash())
             }
             SendTransactionKind::Raw(signer) => self.broadcast(provider, signer, tx).await,
+            SendTransactionKind::Signed(signature) => {
+                let signed_tx = tx.rlp_signed(&signature);
+                let pending = provider.send_raw_transaction(signed_tx).await?;
+                Ok(pending.tx_hash())
+            }
         }
     }
 
@@ -399,7 +438,8 @@ impl ScriptArgs {
             shell::println("\nSKIPPING ON CHAIN SIMULATION.")?;
             txs.into_iter()
                 .map(|btx| {
-                    let mut tx = TransactionWithMetadata::from_typed_transaction(btx.transaction);
+                    let mut tx =
+                        TransactionWithMetadata::from_typed_transaction(btx.transaction.into());
                     tx.rpc = btx.rpc;
                     tx
                 })
@@ -461,38 +501,43 @@ impl ScriptArgs {
 
             let provider_info = manager.get_or_init_provider(&tx_rpc, self.legacy).await?;
 
-            // Handles chain specific requirements.
-            tx.change_type(provider_info.is_legacy);
-            tx.transaction.set_chain_id(provider_info.chain);
+            // We only modify the transaction if it's a "raw" tx. If it's already signed, obviously
+            // we don't touch it
+            if let TransactionForm::Raw(_) = tx.transaction {
+                // Handles chain specific requirements.
+                tx.change_type(provider_info.is_legacy);
+                tx.typed_tx_mut().set_chain_id(provider_info.chain);
 
-            if !self.skip_simulation {
-                let typed_tx = tx.typed_tx_mut();
+                if !self.skip_simulation {
+                    let typed_tx = tx.typed_tx_mut();
 
-                if has_different_gas_calc(provider_info.chain) {
-                    trace!("estimating with different gas calculation");
-                    let gas = *typed_tx.gas().expect("gas is set by simulation.");
+                    if has_different_gas_calc(provider_info.chain) {
+                        trace!("estimating with different gas calculation");
+                        let gas = *typed_tx.gas().expect("gas is set by simulation.");
 
-                    // We are trying to show the user an estimation of the total gas usage.
-                    //
-                    // However, some transactions might depend on previous ones. For
-                    // example, tx1 might deploy a contract that tx2 uses. That
-                    // will result in the following `estimate_gas` call to fail,
-                    // since tx1 hasn't been broadcasted yet.
-                    //
-                    // Not exiting here will not be a problem when actually broadcasting, because
-                    // for chains where `has_different_gas_calc` returns true,
-                    // we await each transaction before broadcasting the next
-                    // one.
-                    if let Err(err) = self.estimate_gas(typed_tx, &provider_info.provider).await {
-                        trace!("gas estimation failed: {err}");
+                        // We are trying to show the user an estimation of the total gas usage.
+                        //
+                        // However, some transactions might depend on previous ones. For
+                        // example, tx1 might deploy a contract that tx2 uses. That
+                        // will result in the following `estimate_gas` call to fail,
+                        // since tx1 hasn't been broadcasted yet.
+                        //
+                        // Not exiting here will not be a problem when actually broadcasting,
+                        // because for chains where `has_different_gas_calc`
+                        // returns true, we await each transaction before
+                        // broadcasting the next one.
+                        if let Err(err) = self.estimate_gas(typed_tx, &provider_info.provider).await
+                        {
+                            trace!("gas estimation failed: {err}");
 
-                        // Restore gas value, since `estimate_gas` will remove it.
-                        typed_tx.set_gas(gas);
+                            // Restore gas value, since `estimate_gas` will remove it.
+                            typed_tx.set_gas(gas);
+                        }
                     }
-                }
 
-                let total_gas = total_gas_per_rpc.entry(tx_rpc.clone()).or_insert(U256::zero());
-                *total_gas += *typed_tx.gas().expect("gas is set");
+                    let total_gas = total_gas_per_rpc.entry(tx_rpc.clone()).or_insert(U256::zero());
+                    *total_gas += *typed_tx.gas().expect("gas is set");
+                }
             }
 
             new_sequence.push_back(tx);
@@ -618,6 +663,7 @@ impl ScriptArgs {
 enum SendTransactionKind<'a> {
     Unlocked(Address),
     Raw(&'a WalletSigner),
+    Signed(Signature),
 }
 
 /// Represents how to send _all_ transactions
