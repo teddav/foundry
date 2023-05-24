@@ -734,8 +734,6 @@ impl Backend {
     where
         INSP: Inspector<Self>,
     {
-        println!("inspect_ref");
-
         self.initialize(env);
 
         match revm::evm_inner::<Self, true>(env, self, &mut inspector).transact() {
@@ -1175,8 +1173,6 @@ impl DatabaseExt for Backend {
         journaled_state: &mut JournaledState,
         cheatcodes_inspector: Option<&mut Cheatcodes>,
     ) -> eyre::Result<()> {
-        println!("transact_from_tx");
-
         env.tx.caller = h160_to_b160(
             transaction
                 .from
@@ -1209,16 +1205,16 @@ impl DatabaseExt for Backend {
             .unwrap_or_else(TransactTo::create);
         env.tx.chain_id = transaction.chain_id.map(|c| c.as_u64());
 
-        println!("ENV {:#?}", env.tx);
-
-        let mut cloned_db = self.clone();
-        cloned_db.commit(journaled_state.state.clone());
+        self.commit(journaled_state.state.clone());
+        if let Some(fork) = self.active_fork_mut() {
+            fork.db.commit(journaled_state.state.clone());
+        }
 
         let state = {
             let mut evm = EVM::new();
             evm.env = env.to_owned();
 
-            evm.database(cloned_db.clone());
+            evm.database(self.clone());
 
             if let Some(inspector) = cheatcodes_inspector {
                 match evm.inspect(inspector) {
@@ -1232,63 +1228,29 @@ impl DatabaseExt for Backend {
                 }
             }
         };
-
-        println!("state: {state:#?}");
-
         let changed_accounts = state.keys().copied().collect::<Vec<_>>();
 
-        // commit the state to the cloned db
-        // cloned_db.commit(state.clone());
         self.commit(state.clone());
-
-        println!("FIRST COMMIT");
-        // println!(
-        //     "cloned_db {:#?}",
-        //     cloned_db
-        //         .mem_db()
-        //         .accounts
-        //         .get(&h160_to_b160("0x5bF11839F61EF5ccEEaf1F4153e44df5D02825f7".parse().
-        // unwrap())) );
-
-        // // if there is an active fork, we commit the changes to the fork
-        // if let Some(fork) = self.active_fork_mut() {
-        //     println!("fork");
-        //     fork.db.commit(state);
-        // }
+        // if there is an active fork, we commit the changes to the fork
+        if let Some(fork) = self.active_fork_mut() {
+            fork.db.commit(state);
+        }
 
         // and update our JournaledState with the changes
         for addr in changed_accounts {
-            println!("CHANGED ACCOUNT {:?}", addr);
-
             // if the account already existed, we remove it from the journaled state
-            // if journaled_state.state.remove(&addr).is_some() {
-            //     // then we (re)load the updated account
-            //     // journaled_state.load_account(addr, &mut cloned_db)?;
-            //     journaled_state.load_account(addr, self)?;
-            // }
+            if journaled_state.state.remove(&addr).is_some() {
+                // then we (re)load the updated account
+                journaled_state.load_account(addr, self)?;
+            }
 
-            // // same if there is an active fork
-            // if let Some(fork) = self.active_fork_mut() {
-            //     fork.journaled_state.state.remove(&addr);
-            //     fork.journaled_state.load_account(addr, &mut fork.db)?;
-            // }
+            // same if there is an active fork
+            if let Some(fork) = self.active_fork_mut() {
+                if fork.journaled_state.state.remove(&addr).is_some() {
+                    fork.journaled_state.load_account(addr, &mut fork.db)?;
+                }
+            }
         }
-
-        println!("STATE APPLIED");
-
-        // println!(
-        //     "DB1: {:#?} {:#?}",
-        //     self.mem_db.basic("0x5bF11839F61EF5ccEEaf1F4153e44df5D02825f7".parse().unwrap(),),
-        //     self.mem_db.storage(
-        //         "0x5bF11839F61EF5ccEEaf1F4153e44df5D02825f7".parse().unwrap(),
-        //         U256::from("0x1dc4c07a2d98af447533671abc03c6192381098ad56ff9efb78b0b78b085c8be")
-        //             .into()
-        //     )
-        // );
-        // println!(
-        //     "DB2: {:#?}",
-        //     self.mem_db.basic("0x7ED31830602f9F7419307235c0610Fb262AA0375".parse().unwrap(),),
-        // );
 
         Ok(())
     }
