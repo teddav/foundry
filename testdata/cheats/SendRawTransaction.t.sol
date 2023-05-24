@@ -310,3 +310,73 @@ contract MyERC20 {
         }
     }
 }
+
+contract ScriptSendRawTransactionBroadcast is DSTest {
+    Cheats constant cheats = Cheats(HEVM_ADDRESS);
+
+    function runSignedTxBroadcast() public {
+        uint256 pk_to = 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
+        cheats.startBroadcast(pk_to);
+
+        address from = 0x73E1A965542AFA4B412467761b1CED8A764E1D3B;
+        address to = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266;
+        address random = address(
+            uint160(uint256(keccak256(abi.encodePacked("random"))))
+        );
+
+        assert(address(from).balance == 1 ether);
+        assert(address(to).balance == 1 ether);
+        assert(address(random).balance == 0);
+
+        /*
+            TransactionRequest {
+                from: Some(
+                    0x73e1a965542afa4b412467761b1ced8a764e1d3b,
+                ),
+                to: Some(
+                    Address(
+                        0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266,
+                    ),
+                ),
+                gas: Some(
+                    200000,
+                ),
+                gas_price: Some(
+                    10000000000,
+                ),
+                value: Some(
+                    1234,
+                ),
+                data: None,
+                nonce: Some(
+                    0,
+                ),
+                chain_id: Some(
+                    31337,
+                ),
+            }
+        */
+        cheats.sendRawTransaction(
+            hex"f869808502540be40083030d4094f39fd6e51aad88f6f4ce6ab8827279cfffb922668204d28082f4f6a061ce3c0f4280cb79c1eb0060a9a491cca1ba48ed32f141e3421ccb60c9dbe444a07fcd35cbec5f81427ac20f60484f4da9d00f59652f5053cd13ee90b992e94ab3"
+        );
+
+        uint256 value = 34;
+        (bool success, ) = random.call{value: value}("");
+        require(success);
+
+        cheats.stopBroadcast();
+
+        uint256 gasPrice = 10 * 1e9;
+        assert(address(from).balance == 1 ether - (gasPrice * 21_000) - 1234);
+        assert(address(to).balance == 1 ether + 1234 - value);
+        assert(address(random).balance == value);
+    }
+
+    function runDeployCreate2Deployer() public {
+        cheats.startBroadcast();
+        cheats.sendRawTransaction(
+            hex"f8a58085174876e800830186a08080b853604580600e600039806000f350fe7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe03601600081602082378035828234f58015156039578182fd5b8082525050506014600cf31ba02222222222222222222222222222222222222222222222222222222222222222a02222222222222222222222222222222222222222222222222222222222222222"
+        );
+        cheats.stopBroadcast();
+    }
+}

@@ -180,7 +180,7 @@ pub trait DatabaseExt: Database<Error = DatabaseError> {
         journaled_state: &mut JournaledState,
     ) -> eyre::Result<()>;
 
-    /// Fetches the given transaction for the fork and executes it, committing the state in the DB
+    /// Fetches the given transaction from the fork and executes it, committing the state in the DB
     fn transact_from_hash(
         &mut self,
         id: Option<LocalForkId>,
@@ -190,7 +190,7 @@ pub trait DatabaseExt: Database<Error = DatabaseError> {
         cheatcodes_inspector: Option<&mut Cheatcodes>,
     ) -> eyre::Result<()>;
 
-    /// executes a given TransactionRequest, updates the JournaledState with the changes
+    /// Executes a given TransactionRequest, commits the new state to the DB
     fn transact_from_tx(
         &mut self,
         transaction: TransactionRequest,
@@ -1138,8 +1138,6 @@ impl DatabaseExt for Backend {
         Ok(())
     }
 
-    /// Takes a transaction hash of an already finalized transaction. Looks it up on the current
-    /// fork and executes it on the current state
     fn transact_from_hash(
         &mut self,
         maybe_id: Option<LocalForkId>,
@@ -1168,7 +1166,6 @@ impl DatabaseExt for Backend {
         Ok(())
     }
 
-    /// Executes a TransactionRequest and applies it to the current state
     fn transact_from_tx(
         &mut self,
         transaction: TransactionRequest,
