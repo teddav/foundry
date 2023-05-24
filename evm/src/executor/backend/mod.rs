@@ -1138,6 +1138,8 @@ impl DatabaseExt for Backend {
         Ok(())
     }
 
+    /// Takes a transaction hash of an already finalized transaction. Looks it up on the current
+    /// fork and executes it on the current state
     fn transact_from_hash(
         &mut self,
         maybe_id: Option<LocalForkId>,
@@ -1166,6 +1168,7 @@ impl DatabaseExt for Backend {
         Ok(())
     }
 
+    /// Executes a TransactionRequest and applies it to the current state
     fn transact_from_tx(
         &mut self,
         transaction: TransactionRequest,
@@ -1228,6 +1231,7 @@ impl DatabaseExt for Backend {
                 }
             }
         };
+
         let changed_accounts = state.keys().copied().collect::<Vec<_>>();
 
         self.commit(state.clone());

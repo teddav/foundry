@@ -5,7 +5,7 @@ use crate::cmd::{
 };
 use ethers::{
     prelude::{Middleware, Signer},
-    types::{transaction::eip2718::TypedTransaction, U256},
+    types::U256,
 };
 use foundry_common::{contracts::flatten_contracts, try_get_http_provider};
 use std::sync::Arc;
