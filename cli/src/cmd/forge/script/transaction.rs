@@ -254,7 +254,6 @@ impl TransactionWithMetadata {
     }
 
     pub fn set_tx(&mut self, tx: TypedTransaction) {
-        println!("set_tx set_tx set_tx set_tx");
         self.transaction = TransactionForm::Raw(tx);
     }
 

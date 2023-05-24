@@ -33,9 +33,6 @@ impl ScriptArgs {
         let provider = Arc::new(try_get_http_provider(fork_url)?);
         let already_broadcasted = deployment_sequence.receipts.len();
 
-        println!("\n\nsend_transactions");
-        println!("deployment_sequence {:#?}", deployment_sequence.transactions);
-
         if already_broadcasted < deployment_sequence.transactions.len() {
             let base_transactions =
                 deployment_sequence.base_transactions().into_iter().skip(already_broadcasted);
@@ -47,8 +44,6 @@ impl ScriptArgs {
                     *t.to_typed_transaction().from().expect("No sender for onchain transaction!")
                 })
                 .collect::<HashSet<Address>>();
-
-            println!("required_addresses: {required_addresses:?}");
 
             let n_signed_transactions =
                 base_transactions.filter(|t| matches!(t, TransactionForm::Signed(_, _))).count();
@@ -70,12 +65,6 @@ impl ScriptArgs {
             } else if required_addresses.len() == 0 && n_signed_transactions > 0 {
                 (SendTransactionsKind::Raw(HashMap::new()), 0)
             } else {
-                println!(
-                    "send_transactions SendTransactionsKind {:?} {:?}",
-                    self.wallets, required_addresses
-                );
-                println!("{script_wallets:?}");
-
                 let local_wallets = self
                     .wallets
                     .find_all(provider.clone(), required_addresses, script_wallets)
