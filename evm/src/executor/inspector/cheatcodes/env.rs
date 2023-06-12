@@ -644,7 +644,7 @@ pub fn apply<DB: DatabaseExt>(
         }
         HEVMCalls::SendRawTransaction(inner) => {
             let decoded_tx = TransactionRequest::decode_signed_rlp(&Rlp::new(inner.0.as_ref()))
-                .map_err(|e| err!("sendRawTransaction: error decoding transaction {e}"))?;
+                .map_err(|e| fmt_err!("sendRawTransaction: error decoding transaction {e}"))?;
 
             if let Some(_broadcast) = &state.broadcast {
                 state.broadcastable_transactions.push_back(BroadcastableTransaction {

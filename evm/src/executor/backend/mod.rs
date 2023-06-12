@@ -27,7 +27,6 @@ use revm::{
 };
 use std::{
     collections::{HashMap, HashSet},
-    str::FromStr,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,

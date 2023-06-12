@@ -1011,24 +1011,25 @@ where
 
                     let is_fixed_gas_limit = check_if_fixed_gas_limit(data, call.gas_limit);
 
-                self.broadcastable_transactions.push_back(BroadcastableTransaction {
-                    rpc: data.db.active_fork_url(),
-                    transaction: TransactionForm::Raw(TypedTransaction::Legacy(
-                        TransactionRequest {
-                            from: Some(broadcast.new_origin),
-                            to,
-                            value: Some(call.value.into()),
-                            data: Some(bytecode.into()),
-                            nonce: Some(nonce.into()),
-                            gas: if is_fixed_gas_limit {
-                                Some(call.gas_limit.into())
-                            } else {
-                                None
+                    self.broadcastable_transactions.push_back(BroadcastableTransaction {
+                        rpc: data.db.active_fork_url(),
+                        transaction: TransactionForm::Raw(TypedTransaction::Legacy(
+                            TransactionRequest {
+                                from: Some(broadcast.new_origin),
+                                to,
+                                value: Some(call.value.into()),
+                                data: Some(bytecode.into()),
+                                nonce: Some(nonce.into()),
+                                gas: if is_fixed_gas_limit {
+                                    Some(call.gas_limit.into())
+                                } else {
+                                    None
+                                },
+                                ..Default::default()
                             },
-                            ..Default::default()
-                        },
-                    )),
-                });
+                        )),
+                    });
+                }
             }
         }
 
