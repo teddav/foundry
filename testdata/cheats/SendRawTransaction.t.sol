@@ -2,39 +2,39 @@
 pragma solidity >=0.8.0;
 
 import "ds-test/test.sol";
-import "./Cheats.sol";
+import "./Vm.sol";
 
 contract SendRawTransactionTest is DSTest {
-    Cheats constant cheats = Cheats(HEVM_ADDRESS);
+    Vm constant vm = Vm(HEVM_ADDRESS);
 
     function test_revert_not_a_tx() public {
-        cheats.expectRevert(
+        vm.expectRevert(
             "sendRawTransaction: error decoding transaction RlpExpectedToBeList"
         );
-        cheats.sendRawTransaction(hex"0102");
+        vm.sendRawTransaction(hex"0102");
     }
 
     function test_revert_missing_signature() public {
-        cheats.expectRevert(
+        vm.expectRevert(
             "sendRawTransaction: error decoding transaction RlpIsTooShort"
         );
-        cheats.sendRawTransaction(
+        vm.sendRawTransaction(
             hex"dd806483030d40940993863c19b0defb183ca2b502db7d1b331ded757b80"
         );
     }
 
     function test_revert_wrong_chainid() public {
-        cheats.expectRevert(
+        vm.expectRevert(
             "backend: failed inspecting transaction: Transaction(InvalidChainId)"
         );
-        cheats.sendRawTransaction(
+        vm.sendRawTransaction(
             hex"f860806483030d40946fd0a0cff9a87adf51695b40b4fa267855a8f4c6118025a03ebeabbcfe43c2c982e99b376b5fb6e765059d7f215533c8751218cac99bbd80a00a56cf5c382442466770a756e81272d06005c9e90fb8dbc5b53af499d5aca856"
         );
     }
 
     function test_execute_signed_tx() public {
-        cheats.fee(1);
-        cheats.chainId(1);
+        vm.fee(1);
+        vm.chainId(1);
 
         address from = 0x5316812db67073C4d4af8BB3000C5B86c2877e94;
         address to = 0x6Fd0A0CFF9A87aDF51695b40b4fA267855a8F4c6;
@@ -42,7 +42,7 @@ contract SendRawTransactionTest is DSTest {
         uint256 balance = 1 ether;
         uint256 amountSent = 17;
 
-        cheats.deal(address(from), balance);
+        vm.deal(address(from), balance);
         assertEq(address(from).balance, balance);
         assertEq(address(to).balance, 0);
 
@@ -50,7 +50,7 @@ contract SendRawTransactionTest is DSTest {
         Signed transaction:
         TransactionRequest { from: Some(0x5316812db67073c4d4af8bb3000c5b86c2877e94), to: Some(Address(0x6fd0a0cff9a87adf51695b40b4fa267855a8f4c6)), gas: Some(200000), gas_price: Some(100), value: Some(17), data: None, nonce: Some(0), chain_id: Some(1) }
         */
-        cheats.sendRawTransaction(
+        vm.sendRawTransaction(
             hex"f860806483030d40946fd0a0cff9a87adf51695b40b4fa267855a8f4c6118025a03ebeabbcfe43c2c982e99b376b5fb6e765059d7f215533c8751218cac99bbd80a00a56cf5c382442466770a756e81272d06005c9e90fb8dbc5b53af499d5aca856"
         );
 
@@ -63,8 +63,8 @@ contract SendRawTransactionTest is DSTest {
     }
 
     function test_execute_signed_tx2() public {
-        cheats.fee(1);
-        cheats.chainId(1);
+        vm.fee(1);
+        vm.chainId(1);
 
         address from = 0x5316812db67073C4d4af8BB3000C5B86c2877e94;
         address to = 0x6Fd0A0CFF9A87aDF51695b40b4fA267855a8F4c6;
@@ -75,7 +75,7 @@ contract SendRawTransactionTest is DSTest {
         uint256 balance = 1 ether;
         uint256 amountSent = 17;
 
-        cheats.deal(address(from), balance);
+        vm.deal(address(from), balance);
         assertEq(address(from).balance, balance);
         assertEq(address(to).balance, 0);
 
@@ -83,7 +83,7 @@ contract SendRawTransactionTest is DSTest {
         Signed transaction:
         TransactionRequest { from: Some(0x5316812db67073c4d4af8bb3000c5b86c2877e94), to: Some(Address(0x6fd0a0cff9a87adf51695b40b4fa267855a8f4c6)), gas: Some(200000), gas_price: Some(100), value: Some(17), data: None, nonce: Some(0), chain_id: Some(1) }
         */
-        cheats.sendRawTransaction(
+        vm.sendRawTransaction(
             hex"f860806483030d40946fd0a0cff9a87adf51695b40b4fa267855a8f4c6118025a03ebeabbcfe43c2c982e99b376b5fb6e765059d7f215533c8751218cac99bbd80a00a56cf5c382442466770a756e81272d06005c9e90fb8dbc5b53af499d5aca856"
         );
 
@@ -97,7 +97,7 @@ contract SendRawTransactionTest is DSTest {
 
         uint256 value = 5;
 
-        cheats.prank(to);
+        vm.prank(to);
         (bool success, ) = random.call{value: value}("");
         require(success);
         assertEq(address(to).balance, amountSent - value);
@@ -105,8 +105,8 @@ contract SendRawTransactionTest is DSTest {
     }
 
     function test_execute_signed_tx_with_revert() public {
-        cheats.fee(1);
-        cheats.chainId(1);
+        vm.fee(1);
+        vm.chainId(1);
 
         address from = 0x5316812db67073C4d4af8BB3000C5B86c2877e94;
         address to = 0x6Fd0A0CFF9A87aDF51695b40b4fA267855a8F4c6;
@@ -114,7 +114,7 @@ contract SendRawTransactionTest is DSTest {
         uint256 balance = 1 ether;
         uint256 amountSent = 17;
 
-        cheats.deal(address(from), balance);
+        vm.deal(address(from), balance);
         assertEq(address(from).balance, balance);
         assertEq(address(to).balance, 0);
 
@@ -122,7 +122,7 @@ contract SendRawTransactionTest is DSTest {
         Signed transaction:
         TransactionRequest { from: Some(0x5316812db67073c4d4af8bb3000c5b86c2877e94), to: Some(Address(0x6fd0a0cff9a87adf51695b40b4fa267855a8f4c6)), gas: Some(200000), gas_price: Some(100), value: Some(17), data: None, nonce: Some(0), chain_id: Some(1) }
         */
-        cheats.sendRawTransaction(
+        vm.sendRawTransaction(
             hex"f860806483030d40946fd0a0cff9a87adf51695b40b4fa267855a8f4c6118025a03ebeabbcfe43c2c982e99b376b5fb6e765059d7f215533c8751218cac99bbd80a00a56cf5c382442466770a756e81272d06005c9e90fb8dbc5b53af499d5aca856"
         );
 
@@ -137,8 +137,8 @@ contract SendRawTransactionTest is DSTest {
     }
 
     function test_execute_multiple_signed_tx() public {
-        cheats.fee(1);
-        cheats.chainId(1);
+        vm.fee(1);
+        vm.chainId(1);
 
         address alice = 0x7ED31830602f9F7419307235c0610Fb262AA0375;
         address bob = 0x70CF146aB98ffD5dE24e75dd7423F16181Da8E13;
@@ -156,7 +156,7 @@ contract SendRawTransactionTest is DSTest {
         MyERC20 token = MyERC20(
             address(uint160(uint256(keccak256(abi.encodePacked("mytoken")))))
         );
-        cheats.etch(address(token), code);
+        vm.etch(address(token), code);
 
         token.mint(100, alice);
 
@@ -164,7 +164,7 @@ contract SendRawTransactionTest is DSTest {
         assertEq(token.balanceOf(bob), 0);
         assertEq(token.balanceOf(charlie), 0);
 
-        cheats.deal(alice, 10 ether);
+        vm.deal(alice, 10 ether);
 
         /*
         Signed transaction:
@@ -180,22 +180,22 @@ contract SendRawTransactionTest is DSTest {
         }
         */
         // this would be equivalent to using those cheatcodes:
-        // cheats.prank(alice);
+        // vm.prank(alice);
         // token.approve(bob, 50);
-        cheats.sendRawTransaction(
+        vm.sendRawTransaction(
             hex"f8a5806483030d40945bf11839f61ef5cceeaf1f4153e44df5d02825f780b844095ea7b300000000000000000000000070cf146ab98ffd5de24e75dd7423f16181da8e13000000000000000000000000000000000000000000000000000000000000003225a0e25b9ef561d9a413b21755cc0e4bb6e80f2a88a8a52305690956130d612074dfa07bfd418bc2ad3c3f435fa531cdcdc64887f64ed3fb0d347d6b0086e320ad4eb1"
         );
 
         assertEq(token.allowance(alice, bob), 50);
 
-        cheats.deal(bob, 1 ether);
-        cheats.prank(bob);
+        vm.deal(bob, 1 ether);
+        vm.prank(bob);
         token.transferFrom(alice, charlie, 20);
 
         assertEq(token.balanceOf(bob), 0);
         assertEq(token.balanceOf(charlie), 20);
 
-        cheats.deal(charlie, 1 ether);
+        vm.deal(charlie, 1 ether);
 
         /*
         Signed transaction:
@@ -211,9 +211,9 @@ contract SendRawTransactionTest is DSTest {
         }
         */
         // this would be equivalent to using those cheatcodes:
-        // cheats.prank(charlie);
+        // vm.prank(charlie);
         // token.transfer(bob, 5);
-        cheats.sendRawTransaction(
+        vm.sendRawTransaction(
             hex"f8a5806483030d40945bf11839f61ef5cceeaf1f4153e44df5d02825f780b844a9059cbb00000000000000000000000070cf146ab98ffd5de24e75dd7423f16181da8e13000000000000000000000000000000000000000000000000000000000000000525a0941562f519e33dfe5b44ebc2b799686cebeaeacd617dd89e393620b380797da2a0447dfd38d9444ccd571b000482c81674733761753430c81ee6669e9542c266a1"
         );
 
@@ -312,11 +312,11 @@ contract MyERC20 {
 }
 
 contract ScriptSendRawTransactionBroadcast is DSTest {
-    Cheats constant cheats = Cheats(HEVM_ADDRESS);
+    Vm constant vm = Vm(HEVM_ADDRESS);
 
     function runSignedTxBroadcast() public {
         uint256 pk_to = 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
-        cheats.startBroadcast(pk_to);
+        vm.startBroadcast(pk_to);
 
         address from = 0x73E1A965542AFA4B412467761b1CED8A764E1D3B;
         address to = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266;
@@ -356,7 +356,7 @@ contract ScriptSendRawTransactionBroadcast is DSTest {
                 ),
             }
         */
-        cheats.sendRawTransaction(
+        vm.sendRawTransaction(
             hex"f869808502540be40083030d4094f39fd6e51aad88f6f4ce6ab8827279cfffb922668204d28082f4f6a061ce3c0f4280cb79c1eb0060a9a491cca1ba48ed32f141e3421ccb60c9dbe444a07fcd35cbec5f81427ac20f60484f4da9d00f59652f5053cd13ee90b992e94ab3"
         );
 
@@ -364,7 +364,7 @@ contract ScriptSendRawTransactionBroadcast is DSTest {
         (bool success, ) = random.call{value: value}("");
         require(success);
 
-        cheats.stopBroadcast();
+        vm.stopBroadcast();
 
         uint256 gasPrice = 10 * 1e9;
         assert(address(from).balance == 1 ether - (gasPrice * 21_000) - 1234);
@@ -373,10 +373,10 @@ contract ScriptSendRawTransactionBroadcast is DSTest {
     }
 
     function runDeployCreate2Deployer() public {
-        cheats.startBroadcast();
-        cheats.sendRawTransaction(
+        vm.startBroadcast();
+        vm.sendRawTransaction(
             hex"f8a58085174876e800830186a08080b853604580600e600039806000f350fe7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe03601600081602082378035828234f58015156039578182fd5b8082525050506014600cf31ba02222222222222222222222222222222222222222222222222222222222222222a02222222222222222222222222222222222222222222222222222222222222222"
         );
-        cheats.stopBroadcast();
+        vm.stopBroadcast();
     }
 }

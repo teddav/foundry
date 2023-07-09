@@ -107,7 +107,7 @@ impl ScriptTester {
     pub fn copy_cheat_file(current_dir: &Path, filename: &str) -> eyre::Result<()> {
         let testdata = Self::testdata_path();
         std::fs::copy(
-            testdata.clone() + "/cheats/" + filename,
+            testdata + "/cheats/" + filename,
             current_dir.join(["src/", filename].join("")),
         )?;
 

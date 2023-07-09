@@ -55,9 +55,9 @@ impl Default for TransactionForm {
     }
 }
 
-impl Into<TypedTransaction> for TransactionForm {
-    fn into(self) -> TypedTransaction {
-        match self {
+impl From<TransactionForm> for TypedTransaction {
+    fn from(tx: TransactionForm) -> Self {
+        match tx {
             TransactionForm::Raw(t) => t,
             TransactionForm::Signed(t, _) => t,
         }

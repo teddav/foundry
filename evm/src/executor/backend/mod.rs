@@ -1192,16 +1192,20 @@ impl DatabaseExt for Backend {
             .value
             .ok_or_else(|| eyre::eyre!("transact_from_tx: No `value` field found"))?
             .into();
-        env.tx.data = transaction.data.unwrap_or_else(|| Bytes::default()).0;
+        env.tx.data = transaction.data.unwrap_or_else(Bytes::default).0;
         env.tx.transact_to = transaction
             .to
             .unwrap_or(NameOrAddress::Address(H160::zero()))
             // .ok_or_else(|| eyre::eyre!("transact_from_tx: No `to` field found"))?
             .as_address()
-            .copied()
-            .map(h160_to_b160)
-            .map(TransactTo::Call)
-            .unwrap_or_else(TransactTo::create);
+            .map(|value| {
+                if value.is_zero() {
+                    TransactTo::create()
+                } else {
+                    TransactTo::Call(h160_to_b160(*value))
+                }
+            })
+            .unwrap();
         env.tx.chain_id = transaction.chain_id.map(|c| c.as_u64());
 
         self.commit(journaled_state.state.clone());
